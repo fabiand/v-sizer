@@ -1,13 +1,12 @@
 use std::ops;
-use std::cmp::Ordering;
 
-const MI_B: i64 = 1024 * 1024;
-const GI_B: i64 = MI_B * 1024;
+pub const MI_B: i64 = 1024 * 1024;
+pub const GI_B: i64 = MI_B * 1024;
  
 #[derive(Clone, Copy, Debug)]
-struct Resources {
-    memory_bytes: i64,
-    cpus: i64
+pub struct Resources {
+    pub memory_bytes: i64,
+    pub cpus: i64
 }
 
 impl ops::Add<Resources> for Resources {
@@ -25,54 +24,54 @@ impl ops::Sub<Resources> for Resources {
 }
 
 #[derive(Debug)]
-struct Workloads {
-    total_count_vm: i64,
-    instance_type: InstanceType,
+pub struct Workloads {
+    pub total_count_vm: i64,
+    pub instance_type: InstanceType,
 }
 
 #[derive(Debug)]
-struct InstanceType {
-    name: String,
-    guest: Resources,
-    consumed: Resources,
-    overhead: Resources
+pub struct InstanceType {
+    pub name: String,
+    pub guest: Resources,
+    pub consumed: Resources,
+    pub overhead: Resources
 }
 
 #[derive(Debug)]
-struct NodeCapacity {
-    resources: Resources
+pub struct NodeCapacity {
+    pub resources: Resources
 }
 
 #[derive(Debug)]
-struct Cluster {
-    schedulable_control_plane: bool,
-    control_plane_node_count: i64,
-    worker_node_count: i64,
-    worker_node_capacity: NodeCapacity,
-    cpuOverCommitRatio: f32,
+pub struct Cluster {
+    pub schedulable_control_plane: bool,
+    pub control_plane_node_count: i64,
+    pub worker_node_count: i64,
+    pub worker_node_capacity: NodeCapacity,
+    pub cpu_over_commit_ratio: f32,
 }
 
 #[derive(Debug)]
-struct ClusterResources {
-    consumed: Resources,
-    overhead: Resources,
-    workload: Resources
+pub struct ClusterResources {
+    pub consumed: Resources,
+    pub overhead: Resources,
+    pub workload: Resources
 }
 
 #[derive(Debug)]
-struct Reason(String);
+pub struct Reason(String);
 
 #[derive(Debug)]
-struct CapacityEstimate {
-    resources: ClusterResources,
-    reasoning: Vec<Reason>
+pub struct CapacityEstimate {
+    pub resources: ClusterResources,
+    pub reasoning: Vec<Reason>
 }
 
-trait ClusterEstimator {
+pub trait ClusterEstimator {
     fn capacity_of(&self, cluster: &Cluster) -> CapacityEstimate;
 }
 
-struct HyperConvergedClusterEstimator {}
+pub struct HyperConvergedClusterEstimator {}
 impl ClusterEstimator for HyperConvergedClusterEstimator {
     fn capacity_of(&self, cluster: &Cluster) -> CapacityEstimate {
         let mut rs = Vec::new();
@@ -120,60 +119,11 @@ impl ClusterEstimator for HyperConvergedClusterEstimator {
 }
 
 impl Workloads {
-    fn required_resources(&self) -> Resources {
+    pub fn required_resources(&self) -> Resources {
         let c = self.total_count_vm;
         Resources {
             memory_bytes: self.instance_type.guest.memory_bytes * c,
             cpus: self.instance_type.guest.cpus * c as i64
         }
     }
-}
-
-fn main() {
-    let node = NodeCapacity {
-        resources: Resources {
-            memory_bytes: 256 * GI_B,
-            cpus: 128
-        }
-    };
-
-    let c = Cluster {
-        schedulable_control_plane: false,
-        control_plane_node_count: 3,
-        worker_node_count: 3,
-        worker_node_capacity: node,
-        cpuOverCommitRatio: 0.1
-    };
-
-    println!("Cluster: {:?}", c);
-
-    let estimator = HyperConvergedClusterEstimator{};
-    let estimate = estimator.capacity_of(&c);
-    println!("Cluster capacity: {:?}", estimate);
-
-    let u1_m = InstanceType {
-        name: "u1.medium".to_string(),
-        guest: Resources {
-            memory_bytes: 4 * GI_B,
-            cpus: 8
-        },
-        consumed: Resources {
-            memory_bytes: 200 * MI_B,
-            cpus: 1
-        },
-        overhead: Resources {
-            memory_bytes: 0,
-            cpus: 0
-        }
-    };
-
-    let w = Workloads {
-        total_count_vm: 100,
-        instance_type: u1_m
-    };
-    println!("Workloads: {:?}", w);
-    let required_resources = w.required_resources();
-    println!("Workloads requests: {:?}", required_resources);
-
-    println!("Cluster workload capacity: {:?}", estimate.resources.workload - required_resources);
 }
