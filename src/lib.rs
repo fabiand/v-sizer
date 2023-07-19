@@ -24,38 +24,62 @@ impl ops::Sub<Resources> for Resources {
 }
 
 #[derive(Debug)]
-pub struct Workloads {
-    pub total_count_vm: i64,
-    pub instance_type: InstanceType,
+pub struct Workloads<'a> {
+    pub vm_count: i64,
+    pub instance_type: &'a InstanceType,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct InstanceType {
     pub name: String,
     pub guest: Resources,
-    pub consumed: Resources,
-    pub overhead: Resources
+    pub consumed_by_system: Resources,
+    pub reserved_for_overhead: Resources
 }
 
+impl InstanceType {
+    pub fn resource_footprint(&self) -> Resources {
+        Resources {
+            memory_bytes: self.guest.memory_bytes + self.consumed_by_system.memory_bytes + self.reserved_for_overhead.memory_bytes,
+            cpus: self.guest.cpus + self.consumed_by_system.cpus + self.reserved_for_overhead.cpus
+        }
+    }
+    pub fn how_many_fit_into(&self, estimate: &CapacityEstimate) -> (u64, Reason) {
+        let avail = estimate.resources.available_to_workloads;
+        let req = self.resource_footprint();
+        let fit_into_memory = (avail.memory_bytes as f64 / req.memory_bytes as f64).floor() as u64;
+        let fit_into_cpu = (avail.cpus as f64 / req.cpus as f64).floor() as u64;
+        if fit_into_memory < fit_into_cpu {
+            (fit_into_memory, Reason("Memory constraint".to_string()))
+        } else if fit_into_cpu < fit_into_memory {
+            (fit_into_cpu, Reason("CPU constraint".to_string()))
+        } else {
+            (fit_into_cpu, Reason("CPU and memory constratint".to_string()))
+        }
+    }
+
+}
+
+
 #[derive(Debug)]
-pub struct NodeCapacity {
+pub struct Node {
     pub resources: Resources
 }
 
 #[derive(Debug)]
-pub struct Cluster {
+pub struct Cluster<'a> {
     pub schedulable_control_plane: bool,
     pub control_plane_node_count: i64,
     pub worker_node_count: i64,
-    pub worker_node_capacity: NodeCapacity,
+    pub worker_node: &'a Node,
     pub cpu_over_commit_ratio: f32,
 }
 
 #[derive(Debug)]
 pub struct ClusterResources {
-    pub consumed: Resources,
-    pub overhead: Resources,
-    pub workload: Resources
+    pub consumed_by_system: Resources,
+    pub reserved_for_overhead: Resources,
+    pub available_to_workloads: Resources
 }
 
 #[derive(Debug)]
@@ -69,6 +93,7 @@ pub struct CapacityEstimate {
 
 pub trait ClusterEstimator {
     fn capacity_of(&self, cluster: &Cluster) -> CapacityEstimate;
+    // FIXME capacity_for(&self, workloads: &Workloads) -> Cluster
 }
 
 pub struct HyperConvergedClusterEstimator {}
@@ -84,8 +109,8 @@ impl ClusterEstimator for HyperConvergedClusterEstimator {
         };
 
         let total = Resources {
-            memory_bytes: cluster.worker_node_capacity.resources.memory_bytes * worker_count,
-            cpus: cluster.worker_node_capacity.resources.cpus * worker_count as i64
+            memory_bytes: cluster.worker_node.resources.memory_bytes * worker_count,
+            cpus: cluster.worker_node.resources.cpus * worker_count as i64
         };
 
         rs.push(Reason("HyperConverged clusters have an increased amount of system resource consumption.".to_string()));
@@ -109,21 +134,29 @@ impl ClusterEstimator for HyperConvergedClusterEstimator {
         let workload = total - consumed - overhead;
 
         let cr = ClusterResources {
-            consumed: consumed,
-            overhead: overhead,
-            workload: workload
+            consumed_by_system: consumed,
+            reserved_for_overhead: overhead,
+            available_to_workloads: workload
         };
 
         CapacityEstimate {resources: cr, reasoning: rs}
     }
 }
 
-impl Workloads {
+impl Workloads<'_> {
     pub fn required_resources(&self) -> Resources {
-        let c = self.total_count_vm;
+        let c = self.vm_count;
         Resources {
             memory_bytes: self.instance_type.guest.memory_bytes * c,
             cpus: self.instance_type.guest.cpus * c as i64
         }
+    }
+
+    pub fn can_fit_into(&self, estimate: &CapacityEstimate) -> bool {
+        let avail = estimate.resources.available_to_workloads;
+        let req = self.required_resources();
+        let fit_into_memory = avail.memory_bytes - req.memory_bytes > 0;
+        let fit_into_cpu = avail.cpus - req.cpus > 0;
+        fit_into_memory && fit_into_cpu
     }
 }

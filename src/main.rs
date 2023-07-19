@@ -1,7 +1,7 @@
 use sizer::*;
 
 fn main() {
-    let node = NodeCapacity {
+    let node = Node {
         resources: Resources {
             memory_bytes: 256 * GI_B,
             cpus: 128
@@ -12,15 +12,11 @@ fn main() {
         schedulable_control_plane: false,
         control_plane_node_count: 3,
         worker_node_count: 3,
-        worker_node_capacity: node,
+        worker_node: &node,
         cpu_over_commit_ratio: 0.1
     };
 
     println!("Cluster: {:?}", c);
-
-    let estimator = HyperConvergedClusterEstimator{};
-    let estimate = estimator.capacity_of(&c);
-    println!("Cluster capacity: {:?}", estimate);
 
     let u1_m = InstanceType {
         name: "u1.medium".to_string(),
@@ -28,23 +24,33 @@ fn main() {
             memory_bytes: 4 * GI_B,
             cpus: 8
         },
-        consumed: Resources {
+        consumed_by_system: Resources {
             memory_bytes: 200 * MI_B,
             cpus: 1
         },
-        overhead: Resources {
+        reserved_for_overhead: Resources {
             memory_bytes: 0,
             cpus: 0
         }
     };
 
+    // Let's estimate the capacity of the cluster
+    let estimator = HyperConvergedClusterEstimator{};
+    let estimate = estimator.capacity_of(&c);
+    println!("Estimated cluster capacity: {:?}", estimate);
+
+    // Ok, let's assume these workloads
     let w = Workloads {
-        total_count_vm: 100,
-        instance_type: u1_m
+        vm_count: 10,
+        instance_type: &u1_m
     };
     println!("Workloads: {:?}", w);
-    let required_resources = w.required_resources();
-    println!("Workloads requests: {:?}", required_resources);
 
-    println!("Cluster workload capacity: {:?}", estimate.resources.workload - required_resources);
+    // ...  do these fit into the cluster?
+    println!("Estimated workload capacity: {:?}", estimate.resources.available_to_workloads);
+    println!("Avail - req: {:?}",  estimate.resources.available_to_workloads - w.required_resources());
+
+    // Then, how many do fit into the cluster?
+    println!("Workload fit into estimate? {:?}", w.can_fit_into(&estimate));
+    println!("Workload how many fit into estimate? {:?}", u1_m.how_many_fit_into(&estimate));
 }
