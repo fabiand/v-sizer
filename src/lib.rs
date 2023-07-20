@@ -61,17 +61,17 @@ impl InstanceType {
 }
 
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct Node {
     pub resources: Resources
 }
 
 #[derive(Debug)]
-pub struct Cluster<'a> {
+pub struct Cluster {
     pub schedulable_control_plane: bool,
     pub control_plane_node_count: i64,
     pub worker_node_count: i64,
-    pub worker_node: &'a Node,
+    pub worker_node: Node,
     pub cpu_over_commit_ratio: f32,
 }
 
@@ -93,11 +93,31 @@ pub struct CapacityEstimate {
 
 pub trait ClusterEstimator {
     fn capacity_of(&self, cluster: &Cluster) -> CapacityEstimate;
-    // FIXME capacity_for(&self, workloads: &Workloads) -> Cluster
+    fn capacity_for(&self, node: &Node, workloads: &Workloads) -> Cluster;
 }
 
 pub struct HyperConvergedClusterEstimator {}
 impl ClusterEstimator for HyperConvergedClusterEstimator {
+
+    fn capacity_for(&self, node: &Node, workloads: &Workloads) -> Cluster {
+        let mut cluster = Cluster {
+                schedulable_control_plane: true,
+                control_plane_node_count: 3,
+                worker_node_count: 0,
+                worker_node: *node,
+                cpu_over_commit_ratio: 0.1
+            };
+
+        loop {
+            let fit_into_cluster = workloads.can_fit_into(&self.capacity_of(&cluster));
+            // We always add one more node in order to have capacity for LM
+            cluster.worker_node_count += 1;
+            if fit_into_cluster { break }
+        }
+
+        cluster
+    }
+
     fn capacity_of(&self, cluster: &Cluster) -> CapacityEstimate {
         let mut rs = Vec::new();
 

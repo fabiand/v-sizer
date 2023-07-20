@@ -12,7 +12,7 @@ fn main() {
         schedulable_control_plane: false,
         control_plane_node_count: 3,
         worker_node_count: 3,
-        worker_node: &node,
+        worker_node: node,
         cpu_over_commit_ratio: 0.1
     };
 
@@ -41,7 +41,7 @@ fn main() {
 
     // Ok, let's assume these workloads
     let w = Workloads {
-        vm_count: 10,
+        vm_count: 100,
         instance_type: &u1_m
     };
     println!("Workloads: {:?}", w);
@@ -53,4 +53,7 @@ fn main() {
     // Then, how many do fit into the cluster?
     println!("Workload fit into estimate? {:?}", w.can_fit_into(&estimate));
     println!("Workload how many fit into estimate? {:?}", u1_m.how_many_fit_into(&estimate));
+
+    // And: What cluster would I eventually need for the workloads?
+    println!("Cluster estimate for workload: {:?}", estimator.capacity_for(&node, &w));
 }
