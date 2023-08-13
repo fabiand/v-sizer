@@ -1,53 +1,90 @@
 use std::ops;
 use serde::{Serialize};
-use std::fmt;
+use display_json::DisplayAsJsonPretty;
 
 pub const MI_B: i64 = 1024 * 1024;
 pub const GI_B: i64 = MI_B * 1024;
  
-#[derive(Clone, Copy, Debug, Serialize)]
+ /// Represents compute resources (CPU and Memory)
+#[derive(Clone, Serialize, DisplayAsJsonPretty)]
 pub struct Resources {
     pub memory_bytes: i64,
     pub cpus: i64
 }
 
-impl ops::Add<Resources> for Resources {
-    type Output = Self;
-    fn add(self, _rhs: Self) -> Self {
-        Self { memory_bytes: self.memory_bytes + _rhs.memory_bytes, cpus: self.cpus + _rhs.cpus }
+/// Simplify working with Resources
+impl<'a, 'b> ops::Add<&'b Resources> for &'a Resources {
+    type Output = Resources;
+    fn add(self, _rhs: &'b Resources) -> Resources {
+        Resources { memory_bytes: self.memory_bytes + _rhs.memory_bytes, cpus: self.cpus + _rhs.cpus }
     }
 }
 
-impl ops::Sub<Resources> for Resources {
-    type Output = Self;
-    fn sub(self, _rhs: Self) -> Self {
-        Self { memory_bytes: self.memory_bytes - _rhs.memory_bytes, cpus: self.cpus - _rhs.cpus }
+/// Simplify working with Resources
+impl<'a, 'b> ops::Sub<&'b Resources> for &'a Resources {
+    type Output = Resources;
+    fn sub(self, _rhs: &'b Resources) -> Resources {
+        Resources { memory_bytes: self.memory_bytes - _rhs.memory_bytes, cpus: self.cpus - _rhs.cpus }
     }
 }
 
-#[derive(Debug)]
+/// Simplify working with Resources
+impl<'b> ops::Sub<&'b Resources> for Resources {
+    type Output = Resources;
+    fn sub(self, _rhs: &'b Resources) -> Resources {
+        Resources { memory_bytes: self.memory_bytes - _rhs.memory_bytes, cpus: self.cpus - _rhs.cpus }
+    }
+}
+
+/// Represents a group of workload VMs - as a desired target or available capacity
+#[derive(Serialize, DisplayAsJsonPretty)]
 pub struct Workloads<'a> {
+    /// How many VMs are compsing this workload
     pub vm_count: i64,
+    /// Of what type the VMs are. Currently only a single instanceType per workload is supported
     pub instance_type: &'a InstanceType,
 }
 
-#[derive(Debug)]
+/// Represents the instance type (size) of a workload
+#[derive(Serialize, DisplayAsJsonPretty)]
 pub struct InstanceType {
+    /// The name of the instanceType
     pub name: String,
+    /// Resources available to the guest/workload (predictable)
     pub guest: Resources,
+    /// Resources consumed by per-VM infrastructure processes (predictable)
     pub consumed_by_system: Resources,
+    /// Resources reserved for caches, buffers, and workload depend overheads (difficult to
+    /// predict)
     pub reserved_for_overhead: Resources
 }
 
 impl InstanceType {
+    /// Returns the amount of resources which will be consumed on the host by running one instance
+    /// of this instanceType
+    ///
+    /// There are three resource consumers:
+    /// 1. Resources provided to the guest. These are predictable
+    /// 2. Resources required to run VM related processes (such as qemu, and libvirt)
+    /// 3. Resources required to cope with caches such as page cache and slab
+    ///
+    /// In general the resource footprint of a VM is larger than the resources available to the
+    /// guest. This is becaue a VM is supported by host sided user- and kernel-space processes such
+    /// as qemu, or slab. In addition to this, there are workload and configuration dependent
+    /// overheads, such as buffers to hold data until they get written to the destination.
     pub fn resource_footprint(&self) -> Resources {
         Resources {
             memory_bytes: self.guest.memory_bytes + self.consumed_by_system.memory_bytes + self.reserved_for_overhead.memory_bytes,
             cpus: self.guest.cpus + self.consumed_by_system.cpus + self.reserved_for_overhead.cpus
         }
     }
-    pub fn how_many_fit_into(&self, estimate: &CapacityEstimate) -> (u64, Reason) {
-        let avail = estimate.resources.available_to_workloads;
+
+    /// Calculates how many instances of this type fit into the given cluster resources
+    ///
+    /// This is a naive calculation, this does not consider to spare resources i.e. for live
+    /// migration
+    pub fn how_many_fit_into(&self, resources: &ClusterResources) -> (u64, Reason) {
+        let avail = &resources.available_to_workloads;
         let req = self.resource_footprint();
         let fit_into_memory = (avail.memory_bytes as f64 / req.memory_bytes as f64).floor() as u64;
         let fit_into_cpu = (avail.cpus as f64 / req.cpus as f64).floor() as u64;
@@ -62,62 +99,86 @@ impl InstanceType {
 
 }
 
-
-#[derive(Copy, Clone, Debug, Serialize)]
+/// Represents a physical node
+#[derive(Serialize, DisplayAsJsonPretty)]
 pub struct Node {
+    /// A human friendly description of the node
+    pub description: String,
+    /// The capacity of the node (available to workloads, as exposed by kubelet)
     pub resources: Resources
 }
 
-#[derive(Debug, Serialize)]
-pub struct Cluster {
-    pub schedulable_control_plane: bool,
-    pub control_plane_node_count: i64,
-    pub worker_node_count: i64,
-    pub worker_node: Node,
-    pub cpu_over_commit_ratio: f32,
-}
-
-impl fmt::Display for Cluster {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", serde_json::to_string_pretty(&self).unwrap())
+/// Allow cloning a Node
+impl Clone for Node {
+    fn clone(&self) -> Self {
+        Node{description: self.description.to_owned(),
+             resources: self.resources.clone()}
     }
 }
 
-#[derive(Debug)]
+/// Represents a Cluster
+#[derive(Serialize, DisplayAsJsonPretty)]
+pub struct Cluster {
+    /// A human friendly description of the cluster
+    pub description: String,
+    /// If control plane nodes are shared with workloads
+    pub schedulable_control_plane: bool,
+    /// Number of control plane nodes
+    pub control_plane_node_count: i64,
+    /// Number of worker nodes
+    pub worker_node_count: i64,
+    /// Type of worker nodes
+    pub worker_node: Node,
+    /// Ratio of CPU over-commitment, i.e. 1:10 = 1/10 = 0.1
+    pub cpu_over_commit_ratio: f32,
+}
+
+/// Represents a detailed view on the resource distribution in a Cluster
+#[derive(Serialize, DisplayAsJsonPretty)]
 pub struct ClusterResources {
+    /// Resources consumed by system processes (such as qemu, systemd, libvirt, KubeVirt)
     pub consumed_by_system: Resources,
+    /// Resources reserved for workload overheads, such as PageCache, BufferCache, SLAB, …
     pub reserved_for_overhead: Resources,
+    /// Resources available to the workloads, thus the resources as seen by the guest of a VM
     pub available_to_workloads: Resources
 }
 
-#[derive(Debug)]
+/// Represents a Reason
+#[derive(Serialize, DisplayAsJsonPretty)]
 pub struct Reason(String);
 
-#[derive(Debug)]
-pub struct CapacityEstimate {
+/// Represents an estimated cluster capacity
+#[derive(Serialize, DisplayAsJsonPretty)]
+pub struct ClusterCapacityEstimate {
     pub resources: ClusterResources,
     pub reasoning: Vec<Reason>
 }
 
 pub trait ClusterEstimator {
-    fn capacity_of(&self, cluster: &Cluster) -> CapacityEstimate;
+    /// Estimate the resource capacity of a given cluster
+    fn capacity_of(&self, cluster: &Cluster) -> ClusterCapacityEstimate;
+    /// Estimate what cluster is needed given a node type and workloads
     fn capacity_for(&self, node: &Node, workloads: &Workloads) -> Cluster;
 }
 
+/// Represents a Hyper Converged (HC) cluster
 pub struct HyperConvergedClusterEstimator {}
-impl ClusterEstimator for HyperConvergedClusterEstimator {
 
+/// Implement the ClusterEstimator trait for HC Clusters
+impl ClusterEstimator for HyperConvergedClusterEstimator {
     fn capacity_for(&self, node: &Node, workloads: &Workloads) -> Cluster {
         let mut cluster = Cluster {
+                description: "Cluster with sufficient capacity".to_owned(),
                 schedulable_control_plane: true,
                 control_plane_node_count: 3,
                 worker_node_count: 0,
-                worker_node: *node,
+                worker_node: node.clone(),
                 cpu_over_commit_ratio: 0.1
             };
 
         loop {
-            let fit_into_cluster = workloads.can_fit_into(&self.capacity_of(&cluster));
+            let fit_into_cluster = workloads.can_fit_into(&self.capacity_of(&cluster).resources);
             // We always add one more node in order to have capacity for LM
             cluster.worker_node_count += 1;
             if fit_into_cluster { break }
@@ -126,7 +187,7 @@ impl ClusterEstimator for HyperConvergedClusterEstimator {
         cluster
     }
 
-    fn capacity_of(&self, cluster: &Cluster) -> CapacityEstimate {
+    fn capacity_of(&self, cluster: &Cluster) -> ClusterCapacityEstimate {
         let mut rs = Vec::new();
 
         let worker_count = if cluster.schedulable_control_plane {
@@ -159,7 +220,7 @@ impl ClusterEstimator for HyperConvergedClusterEstimator {
             cpus: 0
         };
         
-        let workload = total - consumed - overhead;
+        let workload = &total - &consumed - &overhead;
 
         let cr = ClusterResources {
             consumed_by_system: consumed,
@@ -167,11 +228,16 @@ impl ClusterEstimator for HyperConvergedClusterEstimator {
             available_to_workloads: workload
         };
 
-        CapacityEstimate {resources: cr, reasoning: rs}
+        ClusterCapacityEstimate {resources: cr, reasoning: rs}
     }
 }
 
 impl Workloads<'_> {
+    /// Determines how many resources are required to run these workloads
+    ///
+    /// This is a workload view on resources. This is only determining how many resources are
+    /// required by the _workload_, it does not care about potential operational overheads which
+    /// the cluster only knows about.
     pub fn required_resources(&self) -> Resources {
         let c = self.vm_count;
         Resources {
@@ -180,8 +246,9 @@ impl Workloads<'_> {
         }
     }
 
-    pub fn can_fit_into(&self, estimate: &CapacityEstimate) -> bool {
-        let avail = estimate.resources.available_to_workloads;
+    /// iDetermines if this workload fits into the given cluster resources
+    pub fn can_fit_into(&self, resources: &ClusterResources) -> bool {
+        let avail = &resources.available_to_workloads;
         let req = self.required_resources();
         let fit_into_memory = avail.memory_bytes - req.memory_bytes > 0;
         let fit_into_cpu = avail.cpus - req.cpus > 0;
