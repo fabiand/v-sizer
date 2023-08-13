@@ -1,9 +1,11 @@
 use std::ops;
+use serde::{Serialize};
+use std::fmt;
 
 pub const MI_B: i64 = 1024 * 1024;
 pub const GI_B: i64 = MI_B * 1024;
  
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize)]
 pub struct Resources {
     pub memory_bytes: i64,
     pub cpus: i64
@@ -29,7 +31,7 @@ pub struct Workloads<'a> {
     pub instance_type: &'a InstanceType,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct InstanceType {
     pub name: String,
     pub guest: Resources,
@@ -61,18 +63,24 @@ impl InstanceType {
 }
 
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize)]
 pub struct Node {
     pub resources: Resources
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Cluster {
     pub schedulable_control_plane: bool,
     pub control_plane_node_count: i64,
     pub worker_node_count: i64,
     pub worker_node: Node,
     pub cpu_over_commit_ratio: f32,
+}
+
+impl fmt::Display for Cluster {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", serde_json::to_string_pretty(&self).unwrap())
+    }
 }
 
 #[derive(Debug)]

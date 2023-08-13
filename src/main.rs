@@ -55,5 +55,5 @@ fn main() {
     println!("Workload how many fit into estimate? {:?}", u1_m.how_many_fit_into(&estimate));
 
     // And: What cluster would I eventually need for the workloads?
-    println!("Cluster estimate for workload: {:?}", estimator.capacity_for(&node, &w));
+    println!("Cluster estimate for workload: {}", estimator.capacity_for(&node, &w));
 }
