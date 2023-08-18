@@ -1,14 +1,15 @@
 use std::ops;
 use serde::{Serialize};
 use display_json::DisplayAsJsonPretty;
+use byte_unit::Byte;
 
-pub const MI_B: i64 = 1024 * 1024;
-pub const GI_B: i64 = MI_B * 1024;
+pub const MI_B: u64 = 1024 * 1024;
+pub const GI_B: u64 = MI_B * 1024;
  
  /// Represents compute resources (CPU and Memory)
 #[derive(Clone, Serialize, DisplayAsJsonPretty)]
 pub struct Resources {
-    pub memory_bytes: i64,
+    pub memory: Byte,
     pub cpus: i64
 }
 
@@ -16,7 +17,10 @@ pub struct Resources {
 impl<'a, 'b> ops::Add<&'b Resources> for &'a Resources {
     type Output = Resources;
     fn add(self, _rhs: &'b Resources) -> Resources {
-        Resources { memory_bytes: self.memory_bytes + _rhs.memory_bytes, cpus: self.cpus + _rhs.cpus }
+        Resources {
+            memory: Byte::from_bytes(self.memory.get_bytes() + _rhs.memory.get_bytes()),
+            cpus: self.cpus + _rhs.cpus
+        }
     }
 }
 
@@ -24,7 +28,10 @@ impl<'a, 'b> ops::Add<&'b Resources> for &'a Resources {
 impl<'a, 'b> ops::Sub<&'b Resources> for &'a Resources {
     type Output = Resources;
     fn sub(self, _rhs: &'b Resources) -> Resources {
-        Resources { memory_bytes: self.memory_bytes - _rhs.memory_bytes, cpus: self.cpus - _rhs.cpus }
+        Resources {
+            memory: Byte::from_bytes(self.memory.get_bytes() - _rhs.memory.get_bytes()),
+            cpus: self.cpus - _rhs.cpus
+        }
     }
 }
 
@@ -32,7 +39,10 @@ impl<'a, 'b> ops::Sub<&'b Resources> for &'a Resources {
 impl<'b> ops::Sub<&'b Resources> for Resources {
     type Output = Resources;
     fn sub(self, _rhs: &'b Resources) -> Resources {
-        Resources { memory_bytes: self.memory_bytes - _rhs.memory_bytes, cpus: self.cpus - _rhs.cpus }
+        Resources {
+            memory: Byte::from_bytes(self.memory.get_bytes() - _rhs.memory.get_bytes()),
+            cpus: self.cpus - _rhs.cpus
+        }
     }
 }
 
@@ -73,10 +83,11 @@ impl InstanceType {
     /// as qemu, or slab. In addition to this, there are workload and configuration dependent
     /// overheads, such as buffers to hold data until they get written to the destination.
     pub fn resource_footprint(&self) -> Resources {
-        Resources {
-            memory_bytes: self.guest.memory_bytes + self.consumed_by_system.memory_bytes + self.reserved_for_overhead.memory_bytes,
+        /*Resources {
+            memory: Byte::from_bytes(self.guest.memory.get_bytes() + self.consumed_by_system.memory.get_bytes() + self.reserved_for_overhead.memory.get_bytes()),
             cpus: self.guest.cpus + self.consumed_by_system.cpus + self.reserved_for_overhead.cpus
-        }
+        }*/
+        &(&self.guest + &self.consumed_by_system) + &self.reserved_for_overhead
     }
 
     /// Calculates how many instances of this type fit into the given cluster resources
@@ -86,7 +97,7 @@ impl InstanceType {
     pub fn how_many_fit_into(&self, resources: &ClusterResources) -> (u64, Reason) {
         let avail = &resources.available_to_workloads;
         let req = self.resource_footprint();
-        let fit_into_memory = (avail.memory_bytes as f64 / req.memory_bytes as f64).floor() as u64;
+        let fit_into_memory = (avail.memory.get_bytes() as f64 / req.memory.get_bytes() as f64).floor() as u64;
         let fit_into_cpu = (avail.cpus as f64 / req.cpus as f64).floor() as u64;
         if fit_into_memory < fit_into_cpu {
             (fit_into_memory, Reason("Memory constraint".to_string()))
@@ -124,9 +135,9 @@ pub struct Cluster {
     /// If control plane nodes are shared with workloads
     pub schedulable_control_plane: bool,
     /// Number of control plane nodes
-    pub control_plane_node_count: i64,
+    pub control_plane_node_count: u16,
     /// Number of worker nodes
-    pub worker_node_count: i64,
+    pub worker_node_count: u16,
     /// Type of worker nodes
     pub worker_node: Node,
     /// Ratio of CPU over-commitment, i.e. 1:10 = 1/10 = 0.1
@@ -198,7 +209,7 @@ impl ClusterEstimator for HyperConvergedClusterEstimator {
         };
 
         let total = Resources {
-            memory_bytes: cluster.worker_node.resources.memory_bytes * worker_count,
+            memory: Byte::from_bytes(cluster.worker_node.resources.memory.get_bytes() * worker_count),
             cpus: cluster.worker_node.resources.cpus * worker_count as i64
         };
 
@@ -208,7 +219,7 @@ impl ClusterEstimator for HyperConvergedClusterEstimator {
             // (kube_pod_container_resource_requests{namespace=~"openshift-.*",
             // resource=~"cpu|memory"}) / 14
             // 14 = count(kube_node_info)
-            memory_bytes: worker_count * 20 * GI_B,
+            memory: worker_count * Byte::from_str("20 GiB").unwrap(),
             cpus: worker_count as i64 * 8
         };
 
@@ -216,7 +227,7 @@ impl ClusterEstimator for HyperConvergedClusterEstimator {
         let overhead = Resources {
             // avg(sum by (instance) (node_memory_SReclaimable_bytes +
             // node_memory_KReclaimable_bytes))
-            memory_bytes: 5 * GI_B,
+            memory: Byte::from_str("5 GiB").unwrap(),
             cpus: 0
         };
         
@@ -241,8 +252,8 @@ impl Workloads<'_> {
     pub fn required_resources(&self) -> Resources {
         let c = self.vm_count;
         Resources {
-            memory_bytes: self.instance_type.guest.memory_bytes * c,
-            cpus: self.instance_type.guest.cpus * c as i64
+            memory: Byte::from_bytes(self.instance_type.guest.memory.get_bytes() as u32 * c as u16),
+            cpus: self.instance_type.guest.cpus * c
         }
     }
 
@@ -250,7 +261,7 @@ impl Workloads<'_> {
     pub fn can_fit_into(&self, resources: &ClusterResources) -> bool {
         let avail = &resources.available_to_workloads;
         let req = self.required_resources();
-        let fit_into_memory = avail.memory_bytes - req.memory_bytes > 0;
+        let fit_into_memory = avail.memory.get_bytes() - req.memory.get_bytes() > 0;
         let fit_into_cpu = avail.cpus - req.cpus > 0;
         fit_into_memory && fit_into_cpu
     }

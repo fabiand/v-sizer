@@ -4,7 +4,7 @@ fn main() {
     let node = Node {
         description: "Worker node".to_owned(),
         resources: Resources {
-            memory_bytes: 256 * GI_B,
+            memory_bytes: Byte::from_str("256 GiB").unwrap(),
             cpus: 128
         }
     };
@@ -23,15 +23,15 @@ fn main() {
     let u1_m = InstanceType {
         name: "u1.medium".to_string(),
         guest: Resources {
-            memory_bytes: 4 * GI_B,
+            memory_bytes: Byte::from_str("4 GiB").unwrap(),
             cpus: 8
         },
         consumed_by_system: Resources {
-            memory_bytes: 200 * MI_B,
+            memory_bytes: Byte::from_str("200 MiB").unwrap(),
             cpus: 1
         },
         reserved_for_overhead: Resources {
-            memory_bytes: 0,
+            memory_bytes: Byte::from_str("0").unwrap(),
             cpus: 0
         }
     };
