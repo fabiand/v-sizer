@@ -2,6 +2,7 @@ use sizer::*;
 use serde_json;
 use std::fs;
 use byte_unit::Byte;
+use clap::Parser;
 
 
 #[cfg(test)]
@@ -30,8 +31,17 @@ mod test {
     }
 }
 
+#[derive(Parser)]
+struct Args {
+    // File with the cluster definition
+    #[arg(short, long, default_value = "data/cluster-simple.json")]
+    cluster_file: String
+}
+
 fn main() {
-    let c_data = fs::read_to_string("data/cluster-simple.json")
+    let args = Args::parse();
+
+    let c_data = fs::read_to_string(args.cluster_file)
         .expect("Unable to read file");
     let c: Cluster = serde_json::from_str(&c_data)
         .expect("JSON does not have the correct format");
