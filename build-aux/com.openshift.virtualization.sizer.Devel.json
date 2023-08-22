@@ -1,0 +1,41 @@
+{
+    "id": "com.openshift.virtualization.sizer.Devel",
+    "runtime": "org.freedesktop.Platform",
+    "runtime-version": "22.08",
+    "sdk": "org.freedesktop.Sdk",
+    "sdk-extensions" : [
+        "org.freedesktop.Sdk.Extension.rust-stable",
+        "org.freedesktop.Sdk.Extension.llvm14"
+    ],
+    "command": "debug/sizer",
+    "finish-args": [
+        "--env=RUST_LOG=gtk_rust_template=debug",
+        "--env=RUST_BACKTRACE=1"
+    ],
+    "build-options": {
+        "append-path": "/usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm14/bin",
+        "build-args": [
+            "--share=network"
+        ],
+        "env": {
+            "CARGO_HOME" : "/run/build/rust-flatpak/cargo"
+        },
+        "test-args": [
+            "--share=network"
+        ]
+    },
+    "modules": [
+        {
+            "name": "sizer",
+            "buildsystem": "cargo",
+            "run-tests": true,
+            "config-opts": [],
+            "sources": [
+                {
+                    "type": "dir",
+                    "path": "../"
+                }
+            ]
+        }
+    ]
+}
