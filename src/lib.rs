@@ -1,5 +1,5 @@
 use std::ops;
-use serde::{Serialize};
+use serde::{Serialize, Deserialize};
 use display_json::DisplayAsJsonPretty;
 use byte_unit::Byte;
 
@@ -7,7 +7,7 @@ pub const MI_B: u64 = 1024 * 1024;
 pub const GI_B: u64 = MI_B * 1024;
  
  /// Represents compute resources (CPU and Memory)
-#[derive(Clone, Serialize, DisplayAsJsonPretty)]
+#[derive(Clone, Serialize, Deserialize, DisplayAsJsonPretty)]
 pub struct Resources {
     pub memory: Byte,
     pub cpus: i64
@@ -111,7 +111,7 @@ impl InstanceType {
 }
 
 /// Represents a physical node
-#[derive(Serialize, DisplayAsJsonPretty)]
+#[derive(Serialize, Deserialize, DisplayAsJsonPretty)]
 pub struct Node {
     /// A human friendly description of the node
     pub description: String,
@@ -128,7 +128,7 @@ impl Clone for Node {
 }
 
 /// Represents a Cluster
-#[derive(Serialize, DisplayAsJsonPretty)]
+#[derive(Serialize, Deserialize, DisplayAsJsonPretty)]
 pub struct Cluster {
     /// A human friendly description of the cluster
     pub description: String,

@@ -1,23 +1,40 @@
 use sizer::*;
+use serde_json;
+use std::fs;
 use byte_unit::Byte;
 
-fn main() {
-    let node = Node {
-        description: "Worker node".to_owned(),
-        resources: Resources {
-            memory: Byte::from_str("256 GiB").unwrap(),
-            cpus: 128
-        }
-    };
 
-    let c = Cluster {
-        description: "".to_owned(),
-        schedulable_control_plane: false,
-        control_plane_node_count: 3,
-        worker_node_count: 3,
-        worker_node: node.clone(),
-        cpu_over_commit_ratio: 0.1
-    };
+#[cfg(test)]
+mod test {
+    use sizer::*;
+
+    #[test]
+    fn de_serialize_node() {
+        let c_data = r#"{
+            "description": "",
+            "schedulable_control_plane": false,
+            "control_plane_node_count": 3,
+            "worker_node_count": 3,
+            "worker_node": {
+                "description": "Worker node",
+                "resources": {
+                    "memory": "256 GiB",
+                    "cpus": 128
+                }
+            },
+            "cpu_over_commit_ratio": 0.1
+        }"#;
+        let _c: Cluster = serde_json::from_str(c_data).unwrap();
+
+        // FIXME assert
+    }
+}
+
+fn main() {
+    let c_data = fs::read_to_string("data/cluster-simple.json")
+        .expect("Unable to read file");
+    let c: Cluster = serde_json::from_str(&c_data)
+        .expect("JSON does not have the correct format");
 
     println!("Cluster: {}", c);
 
@@ -59,5 +76,5 @@ fn main() {
     println!("Workload how many fit into estimate? {} constrained by {}", cap, reas);
 
     // And: What cluster would I eventually need for the workloads?
-    println!("Cluster estimate for workload: {}", estimator.capacity_for(&node, &w));
+    println!("Cluster estimate for workload: {}", estimator.capacity_for(&c.worker_node, &w));
 }
