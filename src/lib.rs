@@ -209,7 +209,7 @@ impl ClusterEstimator for HyperConvergedClusterEstimator {
         };
 
         let total = Resources {
-            memory: Byte::from_bytes(cluster.worker_node.resources.memory.get_bytes() * worker_count),
+            memory: Byte::from_bytes(cluster.worker_node.resources.memory.get_bytes() * worker_count as u128),
             cpus: cluster.worker_node.resources.cpus * worker_count as i64
         };
 
@@ -219,7 +219,7 @@ impl ClusterEstimator for HyperConvergedClusterEstimator {
             // (kube_pod_container_resource_requests{namespace=~"openshift-.*",
             // resource=~"cpu|memory"}) / 14
             // 14 = count(kube_node_info)
-            memory: worker_count * Byte::from_str("20 GiB").unwrap(),
+            memory: Byte::from_bytes(worker_count as u128 * Byte::from_str("20 GiB").unwrap().get_bytes()),
             cpus: worker_count as i64 * 8
         };
 
@@ -252,7 +252,7 @@ impl Workloads<'_> {
     pub fn required_resources(&self) -> Resources {
         let c = self.vm_count;
         Resources {
-            memory: Byte::from_bytes(self.instance_type.guest.memory.get_bytes() as u32 * c as u16),
+            memory: Byte::from_bytes(self.instance_type.guest.memory.get_bytes() * c as u128),
             cpus: self.instance_type.guest.cpus * c
         }
     }

@@ -1,10 +1,11 @@
 use sizer::*;
+use byte_unit::Byte;
 
 fn main() {
     let node = Node {
         description: "Worker node".to_owned(),
         resources: Resources {
-            memory_bytes: Byte::from_str("256 GiB").unwrap(),
+            memory: Byte::from_str("256 GiB").unwrap(),
             cpus: 128
         }
     };
@@ -23,15 +24,15 @@ fn main() {
     let u1_m = InstanceType {
         name: "u1.medium".to_string(),
         guest: Resources {
-            memory_bytes: Byte::from_str("4 GiB").unwrap(),
+            memory: Byte::from_str("4 GiB").unwrap(),
             cpus: 8
         },
         consumed_by_system: Resources {
-            memory_bytes: Byte::from_str("200 MiB").unwrap(),
+            memory: Byte::from_str("200 MiB").unwrap(),
             cpus: 1
         },
         reserved_for_overhead: Resources {
-            memory_bytes: Byte::from_str("0").unwrap(),
+            memory: Byte::from_str("0").unwrap(),
             cpus: 0
         }
     };
