@@ -1,7 +1,7 @@
 use sizer::*;
 use serde_json;
 use std::fs;
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
 
 #[cfg(test)]
@@ -57,18 +57,42 @@ mod test {
 /// Provide a target workload, and estimate the required cluster size
 /// Provide a cluster size, and estimate it's workload capacity
 #[derive(Parser)]
-#[command(author, version, about, long_about = None)]
-struct Args {
+struct SizerCli {
+    #[command(subcommand)]
+    command: Option<SizerCommands>
+}
+
+#[derive(Subcommand)]
+enum SizerCommands {
+    /// Estimate the required cluster for a given workload
+    EstimateClusterFor(EstimateClusterForArgs),
+    /// Estimate the capacity of a given cluster
+    EstimateCapacityOf(EstimateCapacityOfArgs)
+}
+
+#[derive(Parser)]
+struct EstimateClusterForArgs {
+    /// File with the instanceType definition
+    #[arg(short, long, default_value = "data/u1medium.json")]
+    instancetype_file: String,
+
+    /// File with the workload definition
+    #[arg(short, long, default_value = "data/workload-simple.json")]
+    workload_file: String,
+
+    /// File with the node definition
+    #[arg(short, long, default_value = "data/node-simple.json")]
+    node_file: String,
+}
+
+#[derive(Parser)]
+struct EstimateCapacityOfArgs {
     /// File with the cluster definition
     #[arg(short, long, default_value = "data/cluster-simple.json")]
     cluster_file: String,
-
-    /// File with the instanceType definition
-    #[arg(short, long, default_value = "data/u1medium.json")]
-    instancetype_file: String
 }
 
-fn load_from_file<T: for <'a> serde::de::Deserialize<'a>>(f: String) -> Result<T, Box<dyn std::error::Error>> {
+fn load_from_file<T: for <'a> serde::de::Deserialize<'a>>(f: &String) -> Result<T, Box<dyn std::error::Error>> {
     let data = fs::read_to_string(f)?;
 
     let obj = serde_json::from_str(&data)?;
@@ -77,18 +101,32 @@ fn load_from_file<T: for <'a> serde::de::Deserialize<'a>>(f: String) -> Result<T
 }
 
 fn main() {
-    let args = Args::parse();
+    let args = SizerCli::parse();
 
-    let c: Cluster = load_from_file(args.cluster_file).unwrap();
-    let u1_m: InstanceType= load_from_file(args.instancetype_file).unwrap();
-
-    println!("Cluster: {}", c);
-
-    // Let's estimate the capacity of the cluster
     let estimator = HyperConvergedClusterEstimator{};
-    let estimate = estimator.capacity_of(&c);
-    println!("Estimated cluster capacity: {}", estimate);
 
+    match &args.command {
+        Some(SizerCommands::EstimateClusterFor(cmd)) => {
+            let workload: Workloads = load_from_file(&cmd.workload_file).unwrap();
+            println!("Workloads: {}", workload);
+
+            let node: Node = load_from_file(&cmd.node_file).unwrap();
+            println!("Node: {}", node);
+
+            // What cluster would I eventually need for the workloads?
+            println!("Cluster estimate for workload: {}", estimator.capacity_for(&node, &workload));
+        },
+        Some(SizerCommands::EstimateCapacityOf(cmd)) => {
+            let c: Cluster = load_from_file(&cmd.cluster_file).unwrap();
+            println!("Cluster: {}", c);
+
+            // Let's estimate the capacity of the cluster
+            let estimate = estimator.capacity_of(&c);
+            println!("Estimated cluster capacity: {}", estimate);
+        },
+        None => todo!()
+    }
+/*
     // Ok, let's assume these workloads
     let w = Workloads {
         vm_count: 100,
@@ -105,6 +143,5 @@ fn main() {
     let (cap, reas) = u1_m.how_many_fit_into(&estimate.resources);
     println!("Workload how many fit into estimate? {} constrained by {}", cap, reas);
 
-    // And: What cluster would I eventually need for the workloads?
-    println!("Cluster estimate for workload: {}", estimator.capacity_for(&c.worker_node, &w));
+    */
 }

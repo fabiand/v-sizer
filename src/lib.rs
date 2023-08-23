@@ -47,7 +47,7 @@ impl<'b> ops::Sub<&'b Resources> for Resources {
 }
 
 /// Represents a group of workload VMs - as a desired target or available capacity
-#[derive(Serialize, DisplayAsJsonPretty)]
+#[derive(Serialize, Deserialize, DisplayAsJsonPretty)]
 pub struct Workloads<'a> {
     /// How many VMs are compsing this workload
     pub vm_count: i64,
