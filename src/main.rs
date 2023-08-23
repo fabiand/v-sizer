@@ -1,7 +1,6 @@
 use sizer::*;
 use serde_json;
 use std::fs;
-use byte_unit::Byte;
 use clap::Parser;
 
 
