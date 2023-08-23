@@ -56,7 +56,7 @@ pub struct Workloads<'a> {
 }
 
 /// Represents the instance type (size) of a workload
-#[derive(Serialize, DisplayAsJsonPretty)]
+#[derive(Serialize, Deserialize, DisplayAsJsonPretty)]
 pub struct InstanceType {
     /// The name of the instanceType
     pub name: String,

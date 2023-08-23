@@ -8,6 +8,7 @@ use clap::Parser;
 #[cfg(test)]
 mod test {
     use sizer::*;
+    use byte_unit::Byte;
 
     #[test]
     fn de_serialize_node() {
@@ -29,40 +30,60 @@ mod test {
 
         // FIXME assert
     }
+
+    #[test]
+    fn de_serialize_instancetype() {
+        let _u1_m = InstanceType {
+            name: "u1.medium".to_string(),
+            guest: Resources {
+                memory: Byte::from_str("4 GiB").unwrap(),
+                cpus: 8
+            },
+            consumed_by_system: Resources {
+                memory: Byte::from_str("200 MiB").unwrap(),
+                cpus: 1
+            },
+            reserved_for_overhead: Resources {
+                memory: Byte::from_str("0").unwrap(),
+                cpus: 0
+            }
+        };
+
+        // FIXME assert
+    }
+
 }
 
+/// Perform estimations around OpenShift Virtualization.
+/// Provide a target workload, and estimate the required cluster size
+/// Provide a cluster size, and estimate it's workload capacity
 #[derive(Parser)]
+#[command(author, version, about, long_about = None)]
 struct Args {
-    // File with the cluster definition
+    /// File with the cluster definition
     #[arg(short, long, default_value = "data/cluster-simple.json")]
-    cluster_file: String
+    cluster_file: String,
+
+    /// File with the instanceType definition
+    #[arg(short, long, default_value = "data/u1medium.json")]
+    instancetype_file: String
+}
+
+fn load_from_file<T: for <'a> serde::de::Deserialize<'a>>(f: String) -> Result<T, Box<dyn std::error::Error>> {
+    let data = fs::read_to_string(f)?;
+
+    let obj = serde_json::from_str(&data)?;
+
+    Ok(obj)
 }
 
 fn main() {
     let args = Args::parse();
 
-    let c_data = fs::read_to_string(args.cluster_file)
-        .expect("Unable to read file");
-    let c: Cluster = serde_json::from_str(&c_data)
-        .expect("JSON does not have the correct format");
+    let c: Cluster = load_from_file(args.cluster_file).unwrap();
+    let u1_m: InstanceType= load_from_file(args.instancetype_file).unwrap();
 
     println!("Cluster: {}", c);
-
-    let u1_m = InstanceType {
-        name: "u1.medium".to_string(),
-        guest: Resources {
-            memory: Byte::from_str("4 GiB").unwrap(),
-            cpus: 8
-        },
-        consumed_by_system: Resources {
-            memory: Byte::from_str("200 MiB").unwrap(),
-            cpus: 1
-        },
-        reserved_for_overhead: Resources {
-            memory: Byte::from_str("0").unwrap(),
-            cpus: 0
-        }
-    };
 
     // Let's estimate the capacity of the cluster
     let estimator = HyperConvergedClusterEstimator{};
