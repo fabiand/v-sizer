@@ -59,7 +59,7 @@ mod test {
 #[derive(Parser)]
 struct SizerCli {
     #[command(subcommand)]
-    command: Option<SizerCommands>
+    command: SizerCommands
 }
 
 #[derive(Subcommand)]
@@ -106,7 +106,7 @@ fn main() {
     let estimator = HyperConvergedClusterEstimator{};
 
     match &args.command {
-        Some(SizerCommands::EstimateClusterFor(cmd)) => {
+        SizerCommands::EstimateClusterFor(cmd) => {
             let workload: Workloads = load_from_file(&cmd.workload_file).unwrap();
             println!("Workloads: {}", workload);
 
@@ -116,15 +116,14 @@ fn main() {
             // What cluster would I eventually need for the workloads?
             println!("Cluster estimate for workload: {}", estimator.capacity_for(&node, &workload));
         },
-        Some(SizerCommands::EstimateCapacityOf(cmd)) => {
+        SizerCommands::EstimateCapacityOf(cmd) => {
             let c: Cluster = load_from_file(&cmd.cluster_file).unwrap();
             println!("Cluster: {}", c);
 
             // Let's estimate the capacity of the cluster
             let estimate = estimator.capacity_of(&c);
             println!("Estimated cluster capacity: {}", estimate);
-        },
-        None => todo!()
+        }
     }
 /*
     // Ok, let's assume these workloads
