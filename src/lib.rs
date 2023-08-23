@@ -48,11 +48,11 @@ impl<'b> ops::Sub<&'b Resources> for Resources {
 
 /// Represents a group of workload VMs - as a desired target or available capacity
 #[derive(Serialize, Deserialize, DisplayAsJsonPretty)]
-pub struct Workloads<'a> {
+pub struct Workloads {
     /// How many VMs are compsing this workload
     pub vm_count: i64,
     /// Of what type the VMs are. Currently only a single instanceType per workload is supported
-    pub instance_type: &'a InstanceType,
+    pub instance_type: InstanceType,
 }
 
 /// Represents the instance type (size) of a workload
@@ -243,7 +243,7 @@ impl ClusterEstimator for HyperConvergedClusterEstimator {
     }
 }
 
-impl Workloads<'_> {
+impl Workloads {
     /// Determines how many resources are required to run these workloads
     ///
     /// This is a workload view on resources. This is only determining how many resources are
