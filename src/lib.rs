@@ -3,10 +3,7 @@ use serde::{Serialize, Deserialize};
 use display_json::DisplayAsJsonPretty;
 use byte_unit::Byte;
 
-pub const MI_B: u64 = 1024 * 1024;
-pub const GI_B: u64 = MI_B * 1024;
- 
- /// Represents compute resources (CPU and Memory)
+/// Represents compute resources (CPU and Memory)
 #[derive(Clone, Serialize, Deserialize, DisplayAsJsonPretty)]
 pub struct Resources {
     pub memory: Byte,

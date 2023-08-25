@@ -65,13 +65,17 @@ struct SizerCli {
 #[derive(Subcommand)]
 enum SizerCommands {
     /// Estimate the required cluster for a given workload
-    EstimateClusterFor(EstimateClusterForArgs),
+    EstimateCluster(EstimateClusterArgs),
     /// Estimate the capacity of a given cluster
-    EstimateCapacityOf(EstimateCapacityOfArgs)
+    EstimateCapacity(EstimateCapacityArgs)
 }
 
 #[derive(Parser)]
-struct EstimateClusterForArgs {
+struct EstimateClusterArgs {
+    /// Determine the required cluster for a given workload and node type
+    #[arg(long)]
+    required_for: bool,
+
     /// File with the instanceType definition
     #[arg(short, long, default_value = "data/u1medium.json")]
     instancetype_file: String,
@@ -86,7 +90,11 @@ struct EstimateClusterForArgs {
 }
 
 #[derive(Parser)]
-struct EstimateCapacityOfArgs {
+struct EstimateCapacityArgs {
+    /// Estimate the expected capacity of the provide cluster
+    #[arg(long)]
+    of: bool,
+
     /// File with the cluster definition
     #[arg(short, long, default_value = "data/cluster-simple.json")]
     cluster_file: String,
@@ -94,7 +102,6 @@ struct EstimateCapacityOfArgs {
 
 fn load_from_file<T: for <'a> serde::de::Deserialize<'a>>(f: &String) -> Result<T, Box<dyn std::error::Error>> {
     let data = fs::read_to_string(f)?;
-
     let obj = serde_json::from_str(&data)?;
 
     Ok(obj)
@@ -106,36 +113,39 @@ fn main() {
     let estimator = HyperConvergedClusterEstimator{};
 
     match &args.command {
-        SizerCommands::EstimateClusterFor(cmd) => {
-            let workload: Workloads = load_from_file(&cmd.workload_file).unwrap();
-            println!("Workloads: {}", workload);
+        SizerCommands::EstimateCluster(cmd) => {
+            if cmd.required_for {
+                let workload: Workloads = load_from_file(&cmd.workload_file).unwrap();
+                println!("Workloads: {}", workload);
 
-            let node: Node = load_from_file(&cmd.node_file).unwrap();
-            println!("Node: {}", node);
+                let node: Node = load_from_file(&cmd.node_file).unwrap();
+                println!("Node: {}", node);
 
-            // What cluster would I eventually need for the workloads?
-            println!("Cluster estimate for workload: {}", estimator.capacity_for(&node, &workload));
+                // What cluster would I eventually need for the workloads?
+                let estimate = estimator.capacity_for(&node, &workload);
+                println!("Cluster estimate for workload: {}", estimate);
+//                println!("Spare capacity: {}",  &estimate.resources.available_to_workloads - &workload.required_resources());
+            } else {
+                // FIXME print help, how!?
+                todo!()
+            }
         },
-        SizerCommands::EstimateCapacityOf(cmd) => {
-            let c: Cluster = load_from_file(&cmd.cluster_file).unwrap();
-            println!("Cluster: {}", c);
+        SizerCommands::EstimateCapacity(cmd) => {
+            if cmd.of {
+                let c: Cluster = load_from_file(&cmd.cluster_file).unwrap();
+                println!("Cluster: {}", c);
 
-            // Let's estimate the capacity of the cluster
-            let estimate = estimator.capacity_of(&c);
-            println!("Estimated cluster capacity: {}", estimate);
+                // Let's estimate the capacity of the cluster
+                let estimate = estimator.capacity_of(&c);
+                println!("Estimated cluster capacity: {}", estimate);
+            } else {
+                todo!()
+            }
         }
     }
 /*
-    // Ok, let's assume these workloads
-    let w = Workloads {
-        vm_count: 100,
-        instance_type: &u1_m
-    };
-    println!("Workloads: {}", w);
-
     // ...  do these fit into the cluster?
     println!("Estimated workload capacity: {}", estimate.resources.available_to_workloads);
-    println!("Avail - req: {}",  &estimate.resources.available_to_workloads - &w.required_resources());
 
     // Then, how many do fit into the cluster?
     println!("Workload fit into estimate? {}", w.can_fit_into(&estimate.resources));
