@@ -1,13 +1,28 @@
 use std::ops;
 use serde::{Serialize, Deserialize};
 use display_json::DisplayAsJsonPretty;
-use byte_unit::Byte;
+use byte_unit::{Byte, AdjustedByte};
 
 /// Represents compute resources (CPU and Memory)
 #[derive(Copy, Clone, Serialize, Deserialize, PartialEq, Debug, DisplayAsJsonPretty)]
 pub struct Resources {
-    pub memory: Byte,
+    pub memory: AdjustedByte,
     pub cpus: i64
+}
+
+/*
+fn<S>(&T, S) -> Result<S::Ok, S::Error> where S: Serializer
+self.memory.get_appropriate_unit(true))?;
+*
+fn serialize_bytes<S>(&_self, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(self.get_appropriate_unit(true))
+}*/
+
+fn adjusted_from_bytes(bytes: u128) -> AdjustedByte {
+    Byte::from_bytes(bytes).get_appropriate_unit(false)
 }
 
 /// Simplify working with Resources
@@ -15,7 +30,7 @@ impl<'a, 'b> ops::Add<&'b Resources> for &'a Resources {
     type Output = Resources;
     fn add(self, _rhs: &'b Resources) -> Resources {
         Resources {
-            memory: Byte::from_bytes(self.memory.get_bytes() + _rhs.memory.get_bytes()),
+            memory: adjusted_from_bytes(self.memory.get_byte().get_bytes() + _rhs.memory.get_byte().get_bytes()),
             cpus: self.cpus + _rhs.cpus
         }
     }
@@ -24,7 +39,7 @@ impl<'a, 'b> ops::Sub<&'b Resources> for &'a Resources {
     type Output = Resources;
     fn sub(self, _rhs: &'b Resources) -> Resources {
         Resources {
-            memory: Byte::from_bytes(self.memory.get_bytes() - _rhs.memory.get_bytes()),
+            memory: adjusted_from_bytes(self.memory.get_byte().get_bytes() - _rhs.memory.get_byte().get_bytes()),
             cpus: self.cpus - _rhs.cpus
         }
     }
@@ -33,7 +48,7 @@ impl<'b> ops::Sub<&'b Resources> for Resources {
     type Output = Resources;
     fn sub(self, _rhs: &'b Resources) -> Resources {
         Resources {
-            memory: Byte::from_bytes(self.memory.get_bytes() - _rhs.memory.get_bytes()),
+            memory: adjusted_from_bytes(self.memory.get_byte().get_bytes() - _rhs.memory.get_byte().get_bytes()),
             cpus: self.cpus - _rhs.cpus
         }
     }
@@ -42,7 +57,7 @@ impl<'b> ops::Mul<u64> for Resources {
     type Output = Resources;
     fn mul(self, _rhs: u64) -> Resources {
         Resources {
-            memory: Byte::from_bytes(self.memory.get_bytes() * _rhs as u128),
+            memory: adjusted_from_bytes(self.memory.get_byte().get_bytes() * _rhs as u128),
             cpus: self.cpus * _rhs as i64
         }
     }
@@ -101,7 +116,7 @@ impl InstanceType {
     pub fn how_many_fit_into(&self, resources: &ClusterResources) -> (u64, Reason) {
         let avail = &resources.available_to_workloads;
         let req = self.resource_footprint();
-        let fit_into_memory = (avail.memory.get_bytes() as f64 / req.memory.get_bytes() as f64).floor() as u64;
+        let fit_into_memory = (avail.memory.get_byte().get_bytes() as f64 / req.memory.get_byte().get_bytes() as f64).floor() as u64;
         let fit_into_cpu = (avail.cpus as f64 / req.cpus as f64).floor() as u64;
         if fit_into_memory < fit_into_cpu {
             (fit_into_memory, Reason("Memory constraint".to_string()))
@@ -234,7 +249,7 @@ impl Workloads {
     pub fn required_resources(&self) -> Resources {
         let c = self.vm_count;
         Resources {
-            memory: Byte::from_bytes(self.instance_type.guest.memory.get_bytes() * c as u128),
+            memory: adjusted_from_bytes(self.instance_type.guest.memory.get_byte().get_bytes() * c as u128),
             cpus: self.instance_type.guest.cpus * c as i64
         }
     }
@@ -243,7 +258,7 @@ impl Workloads {
     pub fn can_fit_into(&self, resources: &ClusterResources) -> bool {
         let avail = &resources.available_to_workloads;
         let req = self.required_resources();
-        let fit_into_memory = avail.memory.get_bytes() - req.memory.get_bytes() > 0;
+        let fit_into_memory = avail.memory.get_byte().get_bytes() - req.memory.get_byte().get_bytes() > 0;
         let fit_into_cpu = avail.cpus - req.cpus > 0;
         fit_into_memory && fit_into_cpu
     }

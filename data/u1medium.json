@@ -1,7 +1,7 @@
 {
 "name": "u1.medium",
 "guest": {
-    "memory": "4 GiB",
+    "memory": "4 GB",
     "cpus": 8
 },
 "consumed_by_system": {

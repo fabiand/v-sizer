@@ -1,15 +1,15 @@
 {
     "description": "Worker node",
     "capacity": {
-        "memory": "256 GiB",
+        "memory": "256 GB",
         "cpus": 128
     },
     "consumed_by_system": {
-        "memory": "20 GiB",
+        "memory": "20 GB",
         "cpus": 4
     },
     "reserved_for_overhead": {
-        "memory": "20 GiB",
+        "memory": "20 GB",
         "cpus": 4
     }
 }
