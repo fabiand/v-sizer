@@ -65,17 +65,25 @@ struct SizerCli {
 #[derive(Subcommand)]
 enum SizerCommands {
     /// Estimate the required cluster for a given workload
-    EstimateCluster(EstimateClusterArgs),
+    CapacityOf(CapacityArgs),
     /// Estimate the capacity of a given cluster
-    EstimateCapacity(EstimateCapacityArgs)
+    FootprintOf(FootprintArgs)
 }
 
 #[derive(Parser)]
-struct EstimateClusterArgs {
-    /// Determine the required cluster for a given workload and node type
-    #[arg(long)]
-    required_for: bool,
+struct CapacityArgs {
+    /// File with the node definition
+    #[arg(short, long, default_value = "data/node-simple.json")]
+    node_file: String,
 
+    /// File with the cluster definition
+    #[arg(short, long, default_value = "data/cluster-simple.json")]
+    cluster_file: String,
+}
+
+#[derive(Parser)]
+struct FootprintArgs {
+    /// Determine the required cluster for a given workload and node type
     /// File with the instanceType definition
     #[arg(short, long, default_value = "data/u1medium.json")]
     instancetype_file: String,
@@ -83,61 +91,34 @@ struct EstimateClusterArgs {
     /// File with the workload definition
     #[arg(short, long, default_value = "data/workload-simple.json")]
     workload_file: String,
-
-    /// File with the node definition
-    #[arg(short, long, default_value = "data/node-simple.json")]
-    node_file: String,
-}
-
-#[derive(Parser)]
-struct EstimateCapacityArgs {
-    /// Estimate the expected capacity of the provide cluster
-    #[arg(long)]
-    of: bool,
-
-    /// File with the cluster definition
-    #[arg(short, long, default_value = "data/cluster-simple.json")]
-    cluster_file: String,
 }
 
 fn load_from_file<T: for <'a> serde::de::Deserialize<'a>>(f: &String) -> Result<T, Box<dyn std::error::Error>> {
     let data = fs::read_to_string(f)?;
     let obj = serde_json::from_str(&data)?;
-
     Ok(obj)
 }
 
 fn main() {
     let args = SizerCli::parse();
 
-    let estimator = HyperConvergedClusterEstimator{};
-
     match &args.command {
-        SizerCommands::EstimateCluster(cmd) => {
-            if cmd.required_for {
-                let workload: Workloads = load_from_file(&cmd.workload_file).unwrap();
-                println!("Workloads: {}", workload);
-
-                let node: Node = load_from_file(&cmd.node_file).unwrap();
-                println!("Node: {}", node);
-
-                // What cluster would I eventually need for the workloads?
-                let estimate = estimator.capacity_for(&node, &workload);
-                println!("Cluster estimate for workload: {}", estimate);
-//                println!("Spare capacity: {}",  &estimate.resources.available_to_workloads - &workload.required_resources());
+        SizerCommands::CapacityOf(cmd) => {
+            if !cmd.cluster_file.is_empty() {
+                let c: Cluster = load_from_file(&cmd.cluster_file).unwrap();
+                println!("Cluster: {}", c);
+                // Let's estimate the capacity of the cluster
+                println!("Estimated cluster capacity: {}", c.resources());
             } else {
                 // FIXME print help, how!?
                 todo!()
             }
         },
-        SizerCommands::EstimateCapacity(cmd) => {
-            if cmd.of {
-                let c: Cluster = load_from_file(&cmd.cluster_file).unwrap();
-                println!("Cluster: {}", c);
-
-                // Let's estimate the capacity of the cluster
-                let estimate = estimator.capacity_of(&c);
-                println!("Estimated cluster capacity: {}", estimate);
+        SizerCommands::FootprintOf(cmd) => {
+            if !cmd.workload_file.is_empty() {
+                let workload: Workloads = load_from_file(&cmd.workload_file).unwrap();
+                println!("Workloads: {}", workload);
+                println!("Workload resource footprint: {}", workload.required_resources());
             } else {
                 todo!()
             }

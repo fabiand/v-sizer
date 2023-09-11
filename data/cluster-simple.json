@@ -1,0 +1,45 @@
+{
+    "topology": {
+        "schedulable_control_plane": false,
+        "control_plane_node": {
+            "description": "Control plane node",
+            "capacity": {
+                "memory": "256 GiB",
+                "cpus": 128
+            },
+            "consumed_by_system": {
+                "memory": "40 GiB",
+                "cpus": 8
+            },
+           "reserved_for_overhead": {
+                "memory": "40 GiB",
+                "cpus": 8
+            }
+        },
+        "worker_node": {
+            "description": "Worker node",
+            "capacity": {
+                "memory": "256 GiB",
+                "cpus": 128
+            },
+            "consumed_by_system": {
+		"adsasd": 
+"sum by (resource) (kube_pod_container_resource_requests{namespace=~'openshift-.*', resource=~'cpu|memory'}) / 14                14 = count(kube_node_info)",
+                "memory": "20 GiB",
+                "cpus": 4
+            },
+           "reserved_for_overhead": {
+                "_fabiand_query": "avg(sum by (instance) (node_memory_SReclaimable_bytes +                 node_memory_KReclaimable_bytes))",
+                "memory": "20 GiB",
+                "cpus": 4
+            }
+        },
+        "cpu_over_commit_ratio": 0.1
+    },
+    "control_plane_node_count": 3,
+    "worker_node_count": 3,
+    "reasons": [
+    	"HyperConverged clusters have an increased amount of system resource consumption.",
+    	"The use of ODF benefits from larger buffers."
+    ]
+}

@@ -1,0 +1,18 @@
+{
+"vm_count": 100,
+"instance_type": {
+    "name": "u1.medium",
+    "guest": {
+        "memory": "4 GiB",
+        "cpus": 8
+    },
+    "consumed_by_system": {
+        "memory": "200 MiB",
+        "cpus": 1
+    },
+    "reserved_for_overhead": {
+        "memory": 0,
+        "cpus": 0
+    }
+}
+}
