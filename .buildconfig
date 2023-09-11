@@ -1,0 +1,12 @@
+[default]
+name=Default
+runtime=flatpak:org.freedesktop.Sdk/x86_64/22.08
+toolchain=default
+config-opts=
+run-opts=
+app-id=
+postbuild=
+prebuild=
+run-command=
+default=true
+prefix=/app
