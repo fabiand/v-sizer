@@ -7,19 +7,9 @@ use byte_unit::{Byte, AdjustedByte};
 #[derive(Copy, Clone, Serialize, Deserialize, PartialEq, Debug, DisplayAsJsonPretty)]
 pub struct Resources {
     pub memory: AdjustedByte,
-    pub cpus: i64
+    pub cpus: i64,
+    pub vcpus: Option<i64>
 }
-
-/*
-fn<S>(&T, S) -> Result<S::Ok, S::Error> where S: Serializer
-self.memory.get_appropriate_unit(true))?;
-*
-fn serialize_bytes<S>(&_self, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    serializer.serialize_str(self.get_appropriate_unit(true))
-}*/
 
 fn adjusted_from_bytes(bytes: u128) -> AdjustedByte {
     Byte::from_bytes(bytes).get_appropriate_unit(false)
@@ -31,7 +21,8 @@ impl<'a, 'b> ops::Add<&'b Resources> for &'a Resources {
     fn add(self, _rhs: &'b Resources) -> Resources {
         Resources {
             memory: adjusted_from_bytes(self.memory.get_byte().get_bytes() + _rhs.memory.get_byte().get_bytes()),
-            cpus: self.cpus + _rhs.cpus
+            cpus: self.cpus + _rhs.cpus,
+            vcpus: match (self.vcpus, _rhs.vcpus) { (Some(v), Some(rv)) => Some(v + rv), (Some(v), None) => Some(v), (None, Some(rv)) => Some(rv), (None, None) => None}
         }
     }
 }
@@ -40,7 +31,8 @@ impl<'a, 'b> ops::Sub<&'b Resources> for &'a Resources {
     fn sub(self, _rhs: &'b Resources) -> Resources {
         Resources {
             memory: adjusted_from_bytes(self.memory.get_byte().get_bytes() - _rhs.memory.get_byte().get_bytes()),
-            cpus: self.cpus - _rhs.cpus
+            cpus: self.cpus - _rhs.cpus,
+            vcpus: match (self.vcpus, _rhs.vcpus) { (Some(v), Some(rv)) => Some(v - rv), (Some(v), None) => Some(v), (None, Some(rv)) => Some(rv), (None, None) => None}
         }
     }
 }
@@ -49,7 +41,8 @@ impl<'b> ops::Sub<&'b Resources> for Resources {
     fn sub(self, _rhs: &'b Resources) -> Resources {
         Resources {
             memory: adjusted_from_bytes(self.memory.get_byte().get_bytes() - _rhs.memory.get_byte().get_bytes()),
-            cpus: self.cpus - _rhs.cpus
+            cpus: self.cpus - _rhs.cpus,
+            vcpus: match (self.vcpus, _rhs.vcpus) { (Some(v), Some(rv)) => Some(v - rv), (Some(v), None) => Some(v), (None, Some(rv)) => Some(rv), (None, None) => None}
         }
     }
 }
@@ -58,8 +51,16 @@ impl<'b> ops::Mul<u64> for Resources {
     fn mul(self, _rhs: u64) -> Resources {
         Resources {
             memory: adjusted_from_bytes(self.memory.get_byte().get_bytes() * _rhs as u128),
-            cpus: self.cpus * _rhs as i64
+            cpus: self.cpus * _rhs as i64,
+            vcpus: match self.vcpus { Some(v) => Some(v * _rhs as i64), _ => None }
         }
+    }
+}
+
+impl<'b> ops::Mul<u64> for &Resources {
+    type Output = Resources;
+    fn mul(self, _rhs: u64) -> Resources {
+        *self * _rhs
     }
 }
 
@@ -119,11 +120,11 @@ impl InstanceType {
         let fit_into_memory = (avail.memory.get_byte().get_bytes() as f64 / req.memory.get_byte().get_bytes() as f64).floor() as u64;
         let fit_into_cpu = (avail.cpus as f64 / req.cpus as f64).floor() as u64;
         if fit_into_memory < fit_into_cpu {
-            (fit_into_memory, Reason("Memory constraint".to_string()))
+            (fit_into_memory, "Memory constraint".to_string())
         } else if fit_into_cpu < fit_into_memory {
-            (fit_into_cpu, Reason("CPU constraint".to_string()))
+            (fit_into_cpu, "CPU constraint".to_string())
         } else {
-            (fit_into_cpu, Reason("CPU and memory constratint".to_string()))
+            (fit_into_cpu, "CPU and memory constratint".to_string())
         }
     }
 
@@ -160,7 +161,7 @@ impl Clone for Node {
     }
 }
 
-#[derive(Serialize, Deserialize, DisplayAsJsonPretty)]
+#[derive(Clone, Serialize, Deserialize, DisplayAsJsonPretty)]
 pub struct ClusterTopology {
     /// If control plane nodes are shared with workloads
     pub schedulable_control_plane: bool,
@@ -182,16 +183,36 @@ pub struct Cluster {
     pub worker_node_count: u64,
 }
 
-
 impl Cluster {
+    pub fn for_topology_and_workload(topology: ClusterTopology, workloads: Workloads) -> ReasonedResult<Cluster> {
+        let mut reasons = Vec::new();
+
+        let mut cluster = Cluster {
+            topology: topology.clone(),
+            control_plane_node_count: 3,
+            worker_node_count: 0
+        };
+
+        loop {
+            let fit_into_cluster = workloads.can_fit_into(&cluster.resources());
+            // We always add one more node in order to have capacity for LM
+            cluster.worker_node_count += 1;
+            if fit_into_cluster.result == true { break }
+        }
+        reasons.push("One additional node is getting included on top of the required ones, in order to enable full-node drains required for updating the cluster".to_string());
+
+        ReasonedResult {
+            result: cluster,
+            reasons: reasons
+        }
+    }
     /// Compute the cluster resources of this cluster
     pub fn resources(&self) -> ClusterResources {
-        let capacity = self.topology.worker_node.capacity * self.worker_node_count;
-        let consumed = self.topology.worker_node.consumed_by_system * self.worker_node_count;
-        let overhead = self.topology.worker_node.reserved_for_overhead * self.worker_node_count;
+        let worker_node = &self.topology.worker_node;
 
-        let workload = &capacity - &consumed - &overhead;
-        assert_eq!(workload, self.topology.worker_node.compute_allocatable() * self.worker_node_count);
+        let mut consumed = worker_node.consumed_by_system * self.worker_node_count;
+        let mut overhead = worker_node.reserved_for_overhead * self.worker_node_count;
+        let mut workload = worker_node.compute_allocatable() * self.worker_node_count;
 
         if self.topology.schedulable_control_plane {
             //rs.push(Reason("More capacity due to schedulable control plane nodes".to_string()));
@@ -203,17 +224,17 @@ impl Cluster {
             let ctl_overhead = ctl_node.reserved_for_overhead * ctl_node_count;
             let ctl_workload = &ctl_capacity - &ctl_consumed - &ctl_overhead;
 
-            ClusterResources {
-                consumed_by_system: &consumed + &ctl_consumed,
-                reserved_for_overhead: &overhead + &ctl_overhead,
-                available_to_workloads: &workload + &ctl_workload
-            }
-        } else {
-            ClusterResources {
-                consumed_by_system: consumed,
-                reserved_for_overhead: overhead,
-                available_to_workloads: workload
-            }
+            consumed = &consumed + &ctl_consumed;
+            overhead = &overhead + &ctl_overhead;
+            workload = &workload + &ctl_workload;
+        }
+
+        workload.vcpus = Some((workload.cpus as f32 * (1.0 / self.topology.cpu_over_commit_ratio)) as i64);
+
+        ClusterResources {
+            consumed_by_system: consumed,
+            reserved_for_overhead: overhead,
+            available_to_workloads: workload
         }
     }
 }
@@ -230,14 +251,15 @@ pub struct ClusterResources {
 }
 
 /// Represents a Reason
-#[derive(Serialize, DisplayAsJsonPretty)]
-pub struct Reason(String);
+//#[derive(Serialize, DisplayAsJsonPretty)]
+//pub struct Reason(String);
+type Reason = String;
 
 /// Represents an estimated cluster capacity
 #[derive(Serialize, DisplayAsJsonPretty)]
-pub struct ClusterCapacityEstimate {
-    pub resources: ClusterResources,
-    pub reasons: Option<Vec<Reason>>
+pub struct ReasonedResult<T> {
+    pub result: T,
+    pub reasons: Vec<Reason>
 }
 
 impl Workloads {
@@ -250,16 +272,21 @@ impl Workloads {
         let c = self.vm_count;
         Resources {
             memory: adjusted_from_bytes(self.instance_type.guest.memory.get_byte().get_bytes() * c as u128),
-            cpus: self.instance_type.guest.cpus * c as i64
+            cpus: self.instance_type.guest.cpus * c as i64,
+            vcpus: match self.instance_type.guest.vcpus { Some(v) => Some(v * c as i64), None => None }
         }
     }
 
-    /// iDetermines if this workload fits into the given cluster resources
-    pub fn can_fit_into(&self, resources: &ClusterResources) -> bool {
+    /// Determines if this workload fits into the given cluster resources
+    pub fn can_fit_into(&self, resources: &ClusterResources) -> ReasonedResult<bool> {
         let avail = &resources.available_to_workloads;
         let req = self.required_resources();
-        let fit_into_memory = avail.memory.get_byte().get_bytes() - req.memory.get_byte().get_bytes() > 0;
-        let fit_into_cpu = avail.cpus - req.cpus > 0;
-        fit_into_memory && fit_into_cpu
+        let avail_mem = avail.memory.get_byte().get_bytes();
+        let req_mem = req.memory.get_byte().get_bytes();
+
+        if avail_mem < req_mem { return ReasonedResult{result: false, reasons: vec!["Constrained by memory".to_string()]} };
+        if avail.cpus < req.cpus { return ReasonedResult{result: false, reasons: vec!["Constrained by pCPU".to_string()]} };
+        //if avail.vcpus < req.vcpus { return ReasoneResult(result: false, reasons: vec!["Constrained by vCPU"]) };
+        ReasonedResult{result: true, reasons: vec![]}
     }
 }

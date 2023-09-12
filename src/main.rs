@@ -67,7 +67,8 @@ enum SizerCommands {
     /// Estimate the required cluster for a given workload
     CapacityOf(CapacityArgs),
     /// Estimate the capacity of a given cluster
-    FootprintOf(FootprintArgs)
+    FootprintOf(FootprintArgs),
+    RequiredClusterFor(RequiredClusterForArgs)
 }
 
 #[derive(Parser)]
@@ -92,6 +93,16 @@ struct FootprintArgs {
     #[arg(short, long, default_value = "data/workload-simple.json")]
     workload_file: String,
 }
+
+#[derive(Parser)]
+struct RequiredClusterForArgs {
+    #[arg(short, long, default_value = "data/clustertopology-simple.json")]
+    clustertopology_file: String,
+
+    #[arg(short, long, default_value = "data/workload-simple.json")]
+    workload_file: String,
+}
+
 
 fn load_from_file<T: for <'a> serde::de::Deserialize<'a>>(f: &String) -> Result<T, Box<dyn std::error::Error>> {
     let data = fs::read_to_string(f)?;
@@ -122,6 +133,20 @@ fn main() {
             } else {
                 todo!()
             }
+        },
+        SizerCommands::RequiredClusterFor(cmd) => {
+            let topology: ClusterTopology = load_from_file(&cmd.clustertopology_file).unwrap();
+            let workload: Workloads = load_from_file(&cmd.workload_file).unwrap();
+            println!("ClusterTopology: {}", topology);
+            println!("Workloads: {}", workload);
+            println!("Workload resource footprint: {}", workload.required_resources());
+
+            let reasoned_cluster = Cluster::for_topology_and_workload(topology, workload);
+            let reasons = reasoned_cluster.reasons;
+            let cluster = reasoned_cluster.result;
+            println!("Cluster: {}", &cluster);
+            println!("Cluster capacity: {}", &cluster.resources());
+            println!("Reasoning:\n- {}", &reasons.join("\n- "));
         }
     }
 /*

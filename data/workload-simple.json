@@ -1,10 +1,11 @@
 {
-"vm_count": 100,
+"vm_count": 400,
 "instance_type": {
     "name": "u1.medium",
     "guest": {
-        "memory": "4 GB",
-        "cpus": 8
+        "memory": "16 GB",
+        "cpus": 0,
+        "vcpus": 8
     },
     "consumed_by_system": {
         "memory": "200 MiB",
