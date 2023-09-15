@@ -145,7 +145,36 @@ pub struct Node {
 }
 
 impl Node {
-    fn compute_allocatable(&self) -> Resources {
+    /// Example:
+    /// ```
+    /// use sizer::Node;
+    /// use byte_unit::Byte;
+    /// let node = Node::example();
+    /// let avail = node.compute_allocatable();
+    /// assert_eq!(avail.memory, Byte::from_str("480 GB").unwrap().get_appropriate_unit(false));
+    /// assert_eq!(avail.cpus, 116);
+    /// ```
+    pub fn example() -> Node {  // FIXME add closure to parametrize
+        Node {
+            description: "Example node".to_string(),
+            capacity: Resources {
+                memory: Byte::from_str("512 GB").unwrap().get_appropriate_unit(false),
+                cpus: 128,
+                vcpus: None
+            },
+            consumed_by_system: Resources {
+                memory: Byte::from_str("16 GB").unwrap().get_appropriate_unit(false),
+                cpus: 8,
+                vcpus: None
+            },
+            reserved_for_overhead: Resources {
+                memory: Byte::from_str("16 GB").unwrap().get_appropriate_unit(false),
+                cpus: 4,
+                vcpus: None
+            }
+        }
+    }
+    pub fn compute_allocatable(&self) -> Resources {
         &self.capacity - &self.consumed_by_system - &self.reserved_for_overhead
     }
 }
@@ -173,6 +202,17 @@ pub struct ClusterTopology {
     pub cpu_over_commit_ratio: f32,
 }
 
+impl ClusterTopology {
+    pub fn example() -> ClusterTopology {
+        ClusterTopology {
+          schedulable_control_plane: false,
+          control_plane_node: Node::example(),
+          worker_node: Node::example(),
+          cpu_over_commit_ratio: 0.1
+        }
+    }
+}
+
 /// Represents a Cluster
 #[derive(Serialize, Deserialize, DisplayAsJsonPretty)]
 pub struct Cluster {
@@ -184,6 +224,13 @@ pub struct Cluster {
 }
 
 impl Cluster {
+    pub fn example() -> Cluster {
+        Cluster {
+            topology: ClusterTopology::example(),
+            control_plane_node_count: 3,
+            worker_node_count: 3
+        }
+    }
     pub fn for_topology_and_workload(topology: ClusterTopology, workloads: Workloads) -> ReasonedResult<Cluster> {
         let mut reasons = Vec::new();
 
@@ -207,34 +254,33 @@ impl Cluster {
         }
     }
     /// Compute the cluster resources of this cluster
+    /// # Examples
+    ///
+    /// ```
+    /// use sizer::Cluster;
+    /// let cluster = Cluster::example();
+    /// assert_eq!(cluster.resources().available_to_workloads.vcpus.unwrap(), 3480);
+    /// ```
     pub fn resources(&self) -> ClusterResources {
         let worker_node = &self.topology.worker_node;
+        let ctl_node = &self.topology.control_plane_node;
+        let is_sched_ctl = self.topology.schedulable_control_plane;
 
-        let mut consumed = worker_node.consumed_by_system * self.worker_node_count;
-        let mut overhead = worker_node.reserved_for_overhead * self.worker_node_count;
-        let mut workload = worker_node.compute_allocatable() * self.worker_node_count;
+        let mut cluster_ress: Vec<_> = [
+           (worker_node.consumed_by_system, ctl_node.consumed_by_system),
+           (worker_node.reserved_for_overhead, ctl_node.reserved_for_overhead),
+           (worker_node.compute_allocatable(), ctl_node.compute_allocatable())]
+          .iter()
+          .map(|(wr, cr)| &(wr * self.worker_node_count)
+                          + &(if is_sched_ctl { cr * self.control_plane_node_count } else { cr * 0 as u64 }))
+          .collect();
 
-        if self.topology.schedulable_control_plane {
-            //rs.push(Reason("More capacity due to schedulable control plane nodes".to_string()));
-            let ctl_node_count = self.control_plane_node_count;
-            let ctl_node = &self.topology.control_plane_node;
-
-            let ctl_capacity = ctl_node.capacity * ctl_node_count;
-            let ctl_consumed = ctl_node.consumed_by_system * ctl_node_count;
-            let ctl_overhead = ctl_node.reserved_for_overhead * ctl_node_count;
-            let ctl_workload = &ctl_capacity - &ctl_consumed - &ctl_overhead;
-
-            consumed = &consumed + &ctl_consumed;
-            overhead = &overhead + &ctl_overhead;
-            workload = &workload + &ctl_workload;
-        }
-
-        workload.vcpus = Some((workload.cpus as f32 * (1.0 / self.topology.cpu_over_commit_ratio)) as i64);
+        cluster_ress[2].vcpus = Some((cluster_ress[2].cpus as f32 * (1.0 / self.topology.cpu_over_commit_ratio)) as i64);
 
         ClusterResources {
-            consumed_by_system: consumed,
-            reserved_for_overhead: overhead,
-            available_to_workloads: workload
+            consumed_by_system: cluster_ress[0],
+            reserved_for_overhead: cluster_ress[1],
+            available_to_workloads: cluster_ress[2]
         }
     }
 }

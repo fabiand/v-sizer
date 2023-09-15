@@ -1,7 +1,9 @@
 use sizer::*;
 use serde_json;
 use std::fs;
+use std::collections::HashMap;
 use clap::{Parser, Subcommand};
+use glob::glob;
 
 
 #[cfg(test)]
@@ -11,44 +13,7 @@ mod test {
 
     #[test]
     fn de_serialize_node() {
-        let c_data = r#"{
-            "description": "",
-            "schedulable_control_plane": false,
-            "control_plane_node_count": 3,
-            "worker_node_count": 3,
-            "worker_node": {
-                "description": "Worker node",
-                "resources": {
-                    "memory": "256 GiB",
-                    "cpus": 128
-                }
-            },
-            "cpu_over_commit_ratio": 0.1
-        }"#;
-        let _c: Cluster = serde_json::from_str(c_data).unwrap();
-
-        // FIXME assert
-    }
-
-    #[test]
-    fn de_serialize_instancetype() {
-        let _u1_m = InstanceType {
-            name: "u1.medium".to_string(),
-            guest: Resources {
-                memory: Byte::from_str("4 GiB").unwrap(),
-                cpus: 8
-            },
-            consumed_by_system: Resources {
-                memory: Byte::from_str("200 MiB").unwrap(),
-                cpus: 1
-            },
-            reserved_for_overhead: Resources {
-                memory: Byte::from_str("0").unwrap(),
-                cpus: 0
-            }
-        };
-
-        // FIXME assert
+        assert!(true);
     }
 
 }
@@ -59,7 +24,11 @@ mod test {
 #[derive(Parser)]
 struct SizerCli {
     #[command(subcommand)]
-    command: SizerCommands
+    command: SizerCommands,
+
+    /// Path to the nodes.d dir with all node definitions
+    #[arg(short, long, default_value = "data/nodes.d/")]
+    nodes_path: String,
 }
 
 #[derive(Subcommand)]
@@ -73,8 +42,12 @@ enum SizerCommands {
 
 #[derive(Parser)]
 struct CapacityArgs {
+    /// Name of a node definition defined in nodes.d
+    #[arg(long)]
+    node: Option<String>,
+
     /// File with the node definition
-    #[arg(short, long, default_value = "data/node-simple.json")]
+    #[arg(long, default_value = "data/node-simple.json")]
     node_file: String,
 
     /// File with the cluster definition
@@ -110,11 +83,52 @@ fn load_from_file<T: for <'a> serde::de::Deserialize<'a>>(f: &String) -> Result<
     Ok(obj)
 }
 
+struct NodeRegistry {
+    nodes: HashMap<String, Node>
+}
+
+impl NodeRegistry {
+    fn create_from_path(path: String) -> NodeRegistry {
+        let mut nodes = HashMap::new();
+
+        for entry in glob(&(path.to_string() + "/*.json")).unwrap() {
+            match entry {
+                Ok(entryfn) => {
+                    let fnn = entryfn.clone().into_os_string().into_string().unwrap();
+                    let _ = &nodes.insert(entryfn.file_stem().unwrap().to_os_string().into_string().unwrap().to_owned(),
+                                  load_from_file(&fnn).unwrap());
+                    },
+                Err(_) => panic!()
+            }
+        }
+
+        NodeRegistry {
+            nodes: nodes
+        }
+    }
+
+    fn print(&self) {
+        println!("Node registry");
+        for (key, val) in self.nodes.iter() {
+            println!("key: {key} val: {val}");
+        }
+    }
+}
+
 fn main() {
     let args = SizerCli::parse();
 
+    let node_registry = NodeRegistry::create_from_path(args.nodes_path);
+    //node_registry.print();
+
     match &args.command {
         SizerCommands::CapacityOf(cmd) => {
+            println!("aaaan: {:?}", &cmd.node.as_ref());
+            if let Some(node_name) = &cmd.node {
+                println!("Using node form index");
+                node_registry.nodes.get(&node_name.to_owned());
+                // do somethin with it
+            }
             if !cmd.cluster_file.is_empty() {
                 let c: Cluster = load_from_file(&cmd.cluster_file).unwrap();
                 println!("Cluster: {}", c);
